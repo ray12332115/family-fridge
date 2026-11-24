@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, collection, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, orderBy, limit, where, arrayUnion, arrayRemove, deleteField } from 'firebase/firestore';
 import { configured, auth, db } from './fb.js';
 import { AI, aiOn, askText, askJSON, genImage, aiErrText } from './ai.js';
@@ -949,7 +949,8 @@ function showLogin(msg){
     const provider = new GoogleAuthProvider();
     try { await signInWithPopup(auth, provider); }
     catch (e){
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return signInWithRedirect(auth, provider);
+      // 不用 signInWithRedirect：網站在 github.io、登入頁在 firebaseapp.com，手機瀏覽器隔離儲存空間會導致 "missing initial state"
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return showLogin('登入視窗被擋住了。請允許彈出視窗，或改用 Safari / Chrome 開啟這個網址再登入。');
       if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') showLogin(e.code === 'auth/unauthorized-domain' ? '這個網址還沒加入 Firebase 的授權網域（Authentication → 設定 → 授權網域）。' : '登入沒有成功，請再試一次。');
     }
   }});
@@ -1055,6 +1056,10 @@ function loadDemo(){
 
 /* ---------- boot ---------- */
 function boot(){
+  // LINE 內建瀏覽器不能用 Google 登入：加上 openExternalBrowser=1 讓 LINE 改用手機預設瀏覽器開啟
+  if (/\bLine\//i.test(navigator.userAgent) && !/[?&]openExternalBrowser=1/.test(location.search)){
+    const u = new URL(location.href); u.searchParams.set('openExternalBrowser', '1'); location.replace(u.href); return;
+  }
   buildTabs();
   const h = location.hash.slice(1); if (TABS.some(t => t[0] === h)) S.tab = h;
   if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('./sw.js').catch(() => {});
