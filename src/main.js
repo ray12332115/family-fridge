@@ -1079,8 +1079,12 @@ function boot(){
     setDoc(uref, {name:S.me.name, photo:S.me.photo, email:user.email || '', lastLogin:new Date().toISOString()}, {merge:true}).catch(() => {});
     const join = new URLSearchParams(location.search).get('join');
     let first = true;
-    userUnsub = onSnapshot(uref, async s => {
-      S.userDoc = s.exists() ? s.data() : {};
+    userUnsub = onSnapshot(uref, {includeMetadataChanges:true}, async s => {
+      // 新網址/新裝置的離線快取是空的：第一筆快照可能只有本機剛寫入的 lastLogin，沒有家庭清單。
+      // 有網路時先等伺服器資料回來再判斷，避免誤判成「沒有冰箱」而跳出建立新冰箱。
+      const d = s.exists() ? s.data() : {};
+      if (first && s.metadata.fromCache && navigator.onLine && !(d.current || (d.households || []).length)) return;
+      S.userDoc = d;
       if (S.userDoc.settings){ Object.assign(S.settings, S.userDoc.settings); applySettings(); lsSet('fr.settings', JSON.stringify(S.settings)); }
       if (!first) { if (S.tab === 'settings') render(); return; }
       first = false;
