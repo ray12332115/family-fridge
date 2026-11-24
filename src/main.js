@@ -1,4 +1,4 @@
-import { GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
+import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, collection, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, orderBy, limit, where, arrayUnion, arrayRemove, deleteField } from 'firebase/firestore';
 import { configured, auth, db } from './fb.js';
 import { AI, aiOn, askText, askJSON, genImage, aiErrText } from './ai.js';
@@ -947,10 +947,14 @@ function logoNode(){ const t = document.createElement('template'); t.innerHTML =
 function showLogin(msg){
   const btn = el('button', {class:'gbtn', onclick: async () => {
     const provider = new GoogleAuthProvider();
+    // 網站和登入頁同網域（Firebase Hosting）時才能安全使用 redirect；跨網域（github.io）在手機會出現 "missing initial state"
+    const sameOrigin = location.hostname === auth.config.authDomain;
+    const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+    if (sameOrigin && standalone) return signInWithRedirect(auth, provider); // iPhone 主畫面 App 的彈出視窗不可靠
     try { await signInWithPopup(auth, provider); }
     catch (e){
-      // 不用 signInWithRedirect：網站在 github.io、登入頁在 firebaseapp.com，手機瀏覽器隔離儲存空間會導致 "missing initial state"
-      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment') return showLogin('登入視窗被擋住了。請允許彈出視窗，或改用 Safari / Chrome 開啟這個網址再登入。');
+      if (e.code === 'auth/popup-blocked' || e.code === 'auth/operation-not-supported-in-this-environment')
+        return sameOrigin ? signInWithRedirect(auth, provider) : showLogin('登入視窗被擋住了。請改用 https://' + auth.config.authDomain + ' 開啟再登入。');
       if (e.code !== 'auth/popup-closed-by-user' && e.code !== 'auth/cancelled-popup-request') showLogin(e.code === 'auth/unauthorized-domain' ? '這個網址還沒加入 Firebase 的授權網域（Authentication → 設定 → 授權網域）。' : '登入沒有成功，請再試一次。');
     }
   }});
