@@ -604,11 +604,7 @@ function renderSettings(){
       el('div', {class:'flabel', text:'邀請家人：把這個連結傳給他們，用 Google 登入後就會加入'}),
       el('div', {class:'copybox'}, linkInp, el('button',{class:'btn', onclick: async () => { try { await navigator.clipboard.writeText(link); toast('已複製邀請連結'); } catch { linkInp.select(); toast('請長按或 Ctrl+C 複製'); } }}, '複製')),
       S.me.id === S.house.owner ? el('button',{class:'btn small ghost', onclick:() => guard(updateDoc(doc(db,'households',S.hid), {joinCode: randCode(10)})).then(() => toast('已換新連結，舊連結失效'))}, '換一個新連結（讓舊連結失效）') : null);
-    const others = (S.userDoc && S.userDoc.households || []).filter(h => h !== S.hid);
-    hp.append(el('div',{class:'row'},
-      others.length ? el('button',{class:'btn small', onclick:() => switchHouse(others[0])}, '切換到另一個家庭') : null,
-      el('button',{class:'btn small ghost', onclick:() => showOnboard(true)}, '建立或加入其他家庭')));
-    area.append(hp);
+    area.append(housesPanel(), hp);
   }
   // AI
   const modelSel = el('select', {class:'inp', id:'aiModel', onchange: e => { if (e.target.value === '__custom') { customM.hidden = false; customM.focus(); } else saveSettings({model:e.target.value}); }},
@@ -992,7 +988,32 @@ async function joinHouse(hid, code){
   toast('已加入家庭 🎉');
   openHouse(hid);
 }
-function switchHouse(hid){ setDoc(doc(db, 'users', S.me.id), {current:hid}, {merge:true}).catch(() => {}); openHouse(hid); }
+function switchHouse(hid){
+  if (hid === S.hid) return;
+  setDoc(doc(db, 'users', S.me.id), {current:hid}, {merge:true}).catch(() => {});
+  openHouse(hid); toast('已切換到「' + (houseInfo.get(hid)?.name || '家庭') + '」');
+}
+
+// 「我的家庭」清單：列出帳號加入過的所有家庭，點一下切換。家庭名稱各讀一次後快取。
+const houseInfo = new Map(); // hid -> {name, count} 或 null（已無權限/被移除）
+function housesPanel(){
+  const ids = [...new Set([...(S.userDoc && S.userDoc.households || []), S.hid].filter(Boolean))];
+  const list = el('div', {class:'houselist'});
+  const draw = () => list.replaceChildren(...ids.filter(id => houseInfo.get(id) !== null).map(id => {
+    const info = id === S.hid ? {name:S.house.name, count:Object.keys(S.house.members || {}).length} : houseInfo.get(id);
+    const cur = id === S.hid;
+    return el('button', {class:'member houseitem' + (cur ? ' cur' : ''), onclick:() => { switchHouse(id); render(); }, disabled:cur},
+      el('div', {class:'tx', style:'flex:1;text-align:left'}, el('div', {text:(info && info.name) || '讀取中…'}), info ? el('div', {class:'hint', text:`${info.count} 位成員`}) : null),
+      el('span', {class:'hint', text: cur ? '✓ 使用中' : '切換 ›'}));
+  }));
+  draw();
+  ids.filter(id => id !== S.hid && !houseInfo.has(id)).forEach(id => getDoc(doc(db, 'households', id))
+    .then(s => houseInfo.set(id, s.exists() ? {name:s.data().name || '未命名的家', count:Object.keys(s.data().members || {}).length} : null))
+    .catch(() => houseInfo.set(id, null)).then(draw));
+  return el('div', {class:'panel'}, el('h3', {text:'我的家庭'}),
+    ids.length > 1 ? null : el('div', {class:'hint', text:'目前只有一個家庭。'}), list,
+    el('button', {class:'btn small ghost', onclick:() => showOnboard(true)}, '＋ 建立或加入其他家庭'));
+}
 
 // 每個家庭只建立一組監聽；切換家庭時先全部取消再重建，所以不會重複監聽。
 let unsubs = [];
