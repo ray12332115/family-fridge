@@ -1,5 +1,5 @@
 import { GoogleAuthProvider, signInWithPopup, signInWithRedirect, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, collection, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, orderBy, limit, where, arrayUnion, arrayRemove, deleteField } from 'firebase/firestore';
+import { doc, collection, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, query, orderBy, limit, where, arrayUnion, arrayRemove, deleteField, writeBatch } from 'firebase/firestore';
 import { configured, auth, db } from './fb.js';
 import { AI, aiOn, askText, askJSON, genImage, aiErrText } from './ai.js';
 
@@ -604,6 +604,15 @@ function renderSettings(){
       el('div', {class:'flabel', text:'邀請家人：把這個連結傳給他們，用 Google 登入後就會加入'}),
       el('div', {class:'copybox'}, linkInp, el('button',{class:'btn', onclick: async () => { try { await navigator.clipboard.writeText(link); toast('已複製邀請連結'); } catch { linkInp.select(); toast('請長按或 Ctrl+C 複製'); } }}, '複製')),
       S.me.id === S.house.owner ? el('button',{class:'btn small ghost', onclick:() => guard(updateDoc(doc(db,'households',S.hid), {joinCode: randCode(10)})).then(() => toast('已換新連結，舊連結失效'))}, '換一個新連結（讓舊連結失效）') : null);
+    const owner = S.me.id === S.house.owner;
+    hp.append(el('div', {class:'dangerzone'},
+      el('div', {class:'flabel', text: owner ? '刪除這個家庭：所有冰箱、食物、照片、食譜、購物清單和紀錄都會永久刪除，所有成員都看不到，無法復原。' : '離開這個家庭：你會看不到這個家庭的冰箱，資料仍保留給其他成員。'}),
+      el('button', {class:'btn small ghost danger', onclick: e => {
+        const b = e.currentTarget, name = S.house.name || '這個家庭';
+        if (b.dataset.armed !== '1'){ b.dataset.armed = '1'; b.textContent = owner ? `確定永久刪除「${name}」？再按一次` : `確定離開「${name}」？再按一次`; setTimeout(() => { if (b.isConnected){ b.dataset.armed = ''; b.textContent = owner ? '刪除這個家庭' : '離開這個家庭'; } }, 5000); return; }
+        b.disabled = true; b.textContent = owner ? '刪除中…' : '離開中…';
+        (owner ? deleteHouse(S.hid) : leaveHouse(S.hid)).catch(err => { console.error(err); toast((owner ? '刪除' : '離開') + '失敗，請確認網路後再試'); b.disabled = false; b.dataset.armed = ''; b.textContent = owner ? '刪除這個家庭' : '離開這個家庭'; });
+      }}, owner ? '刪除這個家庭' : '離開這個家庭')));
     area.append(housesPanel(), hp);
   }
   // AI
@@ -994,6 +1003,33 @@ function switchHouse(hid){
   openHouse(hid); toast('已切換到「' + (houseInfo.get(hid)?.name || '家庭') + '」');
 }
 
+// 把某個家庭從自己的清單移除，改開另一個家庭；沒有其他家庭就進入建立/加入畫面。
+async function dropHouse(hid){
+  const rest = (S.userDoc && S.userDoc.households || []).filter(h => h !== hid);
+  houseInfo.set(hid, null);
+  await setDoc(doc(db, 'users', S.me.id), {households:arrayRemove(hid), current: rest[0] || deleteField()}, {merge:true}).catch(e => console.warn(e));
+  if (S.userDoc){ S.userDoc.households = rest; S.userDoc.current = rest[0]; }
+  if (rest[0]) openHouse(rest[0]); else { stopSubs(); S.hid = null; S.house = null; showOnboard(false); }
+}
+async function leaveHouse(hid){
+  stopSubs();
+  await updateDoc(doc(db, 'households', hid), {[`members.${S.me.id}`]: deleteField()});
+  await dropHouse(hid); toast('已離開家庭');
+}
+// 建立者刪除整個家庭：先刪子集合（規則要求刪除者仍是成員），最後刪家庭本身
+async function deleteHouse(hid){
+  stopSubs();
+  for (const c of ['items', 'photos', 'fridges', 'shopping', 'activity', 'recipes', 'meta']){
+    for (;;){
+      const snap = await getDocs(query(collection(db, 'households', hid, c), limit(400)));
+      if (snap.empty) break;
+      const b = writeBatch(db); snap.docs.forEach(d => b.delete(d.ref)); await b.commit();
+    }
+  }
+  await deleteDoc(doc(db, 'households', hid));
+  await dropHouse(hid); toast('家庭已刪除');
+}
+
 // 「我的家庭」清單：列出帳號加入過的所有家庭，點一下切換。家庭名稱各讀一次後快取。
 const houseInfo = new Map(); // hid -> {name, count} 或 null（已無權限/被移除）
 function housesPanel(){
@@ -1026,12 +1062,13 @@ function openHouse(hid){
   render();
   let firstItems = true;
   const timer = setTimeout(() => { if (!S.loaded){ S.loaded = true; showNotice('目前連不上網路，先顯示上次存在這台裝置的資料。'); render(); } }, 8000);
-  const onErr = e => { console.error(e); if (e.code === 'permission-denied'){ stopSubs(); S.hid = null; showOnboard(false); } };
+  const onErr = e => { console.error(e); if (e.code === 'permission-denied' && S.hid === hid){ stopSubs(); dropHouse(hid); } };
   const map = snap => snap.docs.map(d => Object.assign({}, d.data(), {id: d.id}));
   unsubs.push(onSnapshot(doc(db, 'households', hid), s => {
-    if (!s.exists()){ stopSubs(); showOnboard(false); return; }
+    // 家庭被刪除或自己被移出：從清單移除並切到另一個家庭（只信伺服器結果，避免離線快取誤判）
+    if (!s.exists()){ if (!s.metadata.fromCache){ stopSubs(); dropHouse(hid); } return; }
     S.house = s.data();
-    if (!S.house.members || !S.house.members[S.me.id]){ stopSubs(); showOnboard(false); return; }
+    if (!S.house.members || !S.house.members[S.me.id]){ stopSubs(); dropHouse(hid); return; }
     // 名字或頭像變了才更新一次（不在每次快照都寫入）
     const m = S.house.members[S.me.id];
     if (!profileSynced && !s.metadata.fromCache){ profileSynced = true; if (m.name !== S.me.name || m.photo !== S.me.photo) updateDoc(doc(db, 'households', hid), {[`members.${S.me.id}.name`]: S.me.name || '', [`members.${S.me.id}.photo`]: S.me.photo || ''}).catch(() => {}); }
