@@ -1,0 +1,40 @@
+rules_version = '2';
+// 家庭冰箱管家的資料權限：
+// - users/{uid}：只有本人能讀寫（設定、加入過哪些家庭）
+// - households/{hid}：只有成員能讀寫；非成員只能「用正確的邀請碼把自己加進來」
+// - households/{hid}/{子集合}：冰箱、食物、照片、食譜、購物清單、紀錄，只有成員能讀寫
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+    function isMember(hid) {
+      return signedIn() && request.auth.uid in get(/databases/$(database)/documents/households/$(hid)).data.members;
+    }
+
+    match /users/{uid} {
+      allow read, write: if signedIn() && request.auth.uid == uid;
+    }
+
+    match /households/{hid} {
+      allow read: if signedIn() && request.auth.uid in resource.data.members;
+      allow create: if signedIn()
+        && request.resource.data.owner == request.auth.uid
+        && request.resource.data.members.keys().hasOnly([request.auth.uid]);
+      allow update: if signedIn() && (
+        // 成員：可以改名稱、成員、邀請碼，但不能換建立者
+        (request.auth.uid in resource.data.members
+          && request.resource.data.owner == resource.data.owner)
+        ||
+        // 非成員：只能用正確的邀請碼把「自己」加入
+        (!(request.auth.uid in resource.data.members)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['members', 'joinWith'])
+          && request.resource.data.joinWith == resource.data.joinCode
+          && request.resource.data.members.diff(resource.data.members).affectedKeys().hasOnly([request.auth.uid]))
+      );
+      allow delete: if signedIn() && resource.data.owner == request.auth.uid;
+
+      match /{col}/{docId} {
+        allow read, write: if isMember(hid);
+      }
+    }
+  }
+}

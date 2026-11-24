@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>家庭冰箱管家</title>
+<meta name="theme-color" content="#E0603F">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" href="./icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Huninn&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="stylesheet" href="./src/style.css">
+</head>
+<body>
+<div class="gate" id="gate" hidden><div class="gatecard" id="gateCard"></div></div>
+<header class="top gut">
+  <div class="topin">
+    <div class="brand">
+      <svg class="logo" viewBox="0 0 40 40" aria-hidden="true"><rect x="7" y="2" width="26" height="36" rx="7" fill="var(--chill)" stroke="var(--cabinet-edge)" stroke-width="2"/><line x1="7" y1="15" x2="33" y2="15" stroke="var(--cabinet-edge)" stroke-width="2"/><rect x="10" y="7" width="2.5" height="5" rx="1.2" fill="var(--muted)"/><rect x="10" y="19" width="2.5" height="8" rx="1.2" fill="var(--muted)"/><circle cx="21" cy="26" r="1.6" fill="var(--ink)"/><circle cx="27" cy="26" r="1.6" fill="var(--ink)"/><path d="M22 29.5q2 2 4 0" stroke="var(--ink)" stroke-width="1.4" fill="none" stroke-linecap="round"/><ellipse cx="19" cy="29" rx="1.6" ry="1" fill="var(--accent)" opacity=".6"/><ellipse cx="29" cy="29" rx="1.6" ry="1" fill="var(--accent)" opacity=".6"/></svg>
+      <h1>家庭冰箱管家</h1>
+    </div>
+    <div class="tabs" id="tabsTop"></div>
+    <div class="spacer"></div>
+    <div class="people" id="people"></div>
+  </div>
+</header>
+<div class="gut"><div class="notice" id="notice" hidden></div></div>
+
+<main class="gut">
+  <!-- Fridge -->
+  <section class="view" id="v-fridge">
+    <div class="fridgebar">
+      <div class="row" id="fridgeChips"></div>
+      <label class="search"><span aria-hidden="true">🔍</span><input id="q" type="search" placeholder="搜尋食物，例如：雞蛋" autocomplete="off"></label>
+    </div>
+    <div id="fridgeArea"></div>
+  </section>
+
+  <!-- Alerts -->
+  <section class="view" id="v-alerts" hidden>
+    <div class="vhead"><div><h2>到期提醒</h2><p>依過期日排序。提醒天數只影響你自己的畫面。</p></div>
+      <div class="row"><label class="flabel" for="remindDays">提前提醒</label>
+        <select class="inp" id="remindDays" style="width:auto"><option value="1">1 天</option><option value="2">2 天</option><option value="3">3 天</option><option value="5">5 天</option><option value="7">7 天</option></select></div></div>
+    <div class="grid2" id="alertsArea"></div>
+  </section>
+
+  <!-- Recipes -->
+  <section class="view" id="v-recipes" hidden>
+    <div class="vhead"><div><h2>食譜本</h2><p>全家共用的食譜，會自動對照冰箱，看看哪些食材已經有了。</p></div>
+      <div class="row"><button class="btn" id="bookImport">✨ 貼上文字整理成食譜</button><button class="btn primary" id="bookAdd">＋ 新增食譜</button></div></div>
+    <div class="fridgebar">
+      <div class="row" id="bookFilters"></div>
+      <label class="search"><span aria-hidden="true">🔍</span><input id="bookQ" type="search" placeholder="搜尋食譜或食材" autocomplete="off"></label>
+    </div>
+    <div id="bookArea" style="margin-bottom:28px"></div>
+    <div class="vhead"><div><h2>今天煮什麼</h2><p>依冰箱現有食材建議，優先用掉快過期的。喜歡的可以收進食譜本。</p></div></div>
+    <div class="panel" style="margin-bottom:14px">
+      <div class="f2">
+        <div class="field"><label for="rPeople">人數</label><select class="inp" id="rPeople"><option>1</option><option selected>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select></div>
+        <div class="field"><label for="rPref">偏好（選填）</label><input class="inp" id="rPref" placeholder="例如：清淡、不吃辣、20 分鐘內"></div>
+      </div>
+      <div class="row"><button class="btn primary" id="rGo">建議 3 道菜</button><span class="hint" id="rHint"></span></div>
+    </div>
+    <div id="recipesArea"></div>
+  </section>
+
+  <!-- Shopping -->
+  <section class="view" id="v-shopping" hidden>
+    <div class="vhead"><div><h2>購物清單</h2><p>全家共用，買到就打勾，回家可直接放進冰箱。</p></div>
+      <button class="btn small ghost" id="clearDone">清除已購買</button></div>
+    <div class="panel">
+      <form class="row" id="shopForm"><input class="inp" id="shopName" placeholder="要買什麼？" style="flex:1 1 160px"><input class="inp" id="shopQty" placeholder="數量" style="width:90px"><button class="btn primary">加入</button></form>
+      <div id="shopList"></div>
+    </div>
+  </section>
+
+  <!-- Log -->
+  <section class="view" id="v-log" hidden>
+    <div class="vhead"><div><h2>紀錄與統計</h2><p>誰放了什麼、吃掉了什麼，以及最近 30 天的浪費情況。</p></div></div>
+    <div class="grid2">
+      <div class="panel" id="statsArea"></div>
+      <div class="panel"><h3>最近動態</h3><div id="logArea"></div></div>
+    </div>
+  </section>
+  <!-- Settings -->
+  <section class="view" id="v-settings" hidden>
+    <div class="vhead"><div><h2>設定</h2><p>帳號、家庭成員、AI 與提醒。</p></div></div>
+    <div class="grid2" id="settingsArea"></div>
+  </section>
+</main>
+
+<div class="fab" id="fab">
+  <button class="btn" id="fabPhoto">📷 拍照新增</button>
+  <button class="btn primary" id="fabAdd">＋ 新增食物</button>
+</div>
+<input type="file" id="photoInput" accept="image/*" capture="environment" hidden>
+<input type="file" id="photoPick" accept="image/*" hidden>
+
+<nav class="bottom" id="tabsBottom"></nav>
+<div class="scrim" id="scrim" hidden><div class="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle"><div class="sheethead"><h2 id="sheetTitle"></h2><button class="iconbtn" id="sheetClose" aria-label="關閉">✕</button></div><div class="sheetbody" id="sheetBody"></div></div></div>
+<div class="toast" id="toast" hidden></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
